@@ -25,7 +25,27 @@ function renderVeterans(){
 }
 async function loadVeterans(){veteranData=await api('/api/veterans');renderVeterans();}
 const styleLabels={front_runner:'도주',pace_chaser:'선행',late_surger:'선입',end_closer:'추입'};
-async function api(path,body){const response=await fetch(path,body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const result=await response.json();if(!response.ok)throw Error(result.error||'요청 실패');return result;}
+let snapshot;
+async function api(path, body) {
+  if (body !== undefined) throw Error('공개용 스냅샷은 읽기 전용입니다.');
+  if (!snapshot) {
+    const response = await fetch('./snapshot.json');
+    if (!response.ok) throw Error('공개 데이터 파일을 불러오지 못했습니다.');
+    snapshot = await response.json();
+  }
+  const { pathname, searchParams } = new URL(path, location.origin);
+  if (pathname === '/api/data') return { ...snapshot.catalog, collection: [], preferences: {} };
+  if (pathname === '/api/support-guides') return snapshot.guides;
+  if (pathname === '/api/veterans') return { records: [], g1Races: [], factorTypes: {} };
+  if (pathname === '/api/plan') {
+    const [course, mode, team, target] = ['courseId', 'mode', 'teamId', 'targetId']
+      .map(key => searchParams.get(key) || '');
+    const savedPlan = snapshot.plans[[course, mode, team, target].join('/')]
+      ?? snapshot.plans[`${course}/${mode}//`];
+    if (savedPlan) return savedPlan;
+  }
+  throw Error('공개 스냅샷에 없는 데이터입니다.');
+}
 function toast(text){$('toast').textContent=text;$('toast').hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').hidden=true,4500);}
 function selectedEvent(){return data?.nextEvents?.events.find(e=>e.courseId===+$('courseId').value);}
 function config(){return {...Object.fromEntries(new FormData($('config'))),eventId:selectedEvent()?.id,ownedOnly:$('ownedOnly').checked,mode,targetId,teamId};}
@@ -42,7 +62,7 @@ async function refresh(){
   const number=++requestNumber;stopSimulation(false);
   renderEventNote();
   if(!selectedEvent()){$('empty').hidden=false;$('empty').textContent='다음 한국 서버 대회 코스 공지가 아직 등록되지 않았습니다.';$('plan-content').hidden=true;return;}
-  try{const p=await api('/api/plan?'+new URLSearchParams(config()));if(number!==requestNumber)return;plan=p;renderPlan();await api('/api/preferences',config());}catch(e){toast(e.message);}
+  try{const p=await api('/api/plan?'+new URLSearchParams(config()));if(number!==requestNumber)return;plan=p;renderPlan();}catch(e){toast(e.message);}
 }
 function renderPlan(){
   renderTeams();
@@ -91,7 +111,7 @@ function renderSkills(){
     const assumed=s.simulationAssumptions||[];
     const assumptionText=assumed.length?'조건 충족·상대 행동 가정 포함'+(assumed.includes('is_used_skill_id')?' · 선행 스킬 발동 가정':''):'';
     return `<tr><td><div class="skill-name">${img(s.icon)}<div><strong>${esc(s.name)}</strong><span class="skill-route ${s.inCurrentBuild?'in-build':'extra-route'}">${s.inCurrentBuild?'현재 편성 경로':'추가 준비'}</span><small>${esc(s.sources.join(' · '))}</small></div></div><small>${esc(s.description)}</small>${s.simulationUnsupportedReason&&!s.simulation?`<small class="error">미지원 이유: ${esc(s.simulationUnsupportedReason)}</small>`:''}${s.courseUncertain?'<small class="simulation-assumption">코스 조건 일부 미확인</small>':''}${assumptionText?`<small class="simulation-assumption">${esc(assumptionText)}</small>`:''}${r?.error?`<small class="error">${esc(r.error)}</small>`:''}</td><td>${esc(rarity[s.rarity]||s.rarity)}</td><td>${cost??'—'}</td><td>${valid&&Number.isFinite(r.u)?`<strong>${(r.u*100).toFixed(0)}%</strong>${Number.isFinite(r.au)?`<small>가속 유효 ${(r.au*100).toFixed(0)}%</small>`:''}`:`<span class="not-computed">${valid?'유효율 재계산 필요':status}</span>`}</td><td class="gain">${valid?r.m.toFixed(3)+' 마신':'—'}</td><td class="gain">${valid&&cost?(r.m*100/cost).toFixed(3):'—'}</td></tr>`;
-  }).join('')||'<tr><td colspan="6">기대 마신이 양수인 계산 결과가 없습니다. 계산 전이라면 위 계산 버튼을 눌러주세요.</td></tr>';
+  }).join('')||'<tr><td colspan="6">이 편성의 조건에 맞는 저장된 계산 결과가 없습니다.</td></tr>';
 }
 async function simulate(scope='all'){
   if(!plan||plan.empty||worker)return;
@@ -115,13 +135,19 @@ function collection(){
   $('collection-type').hidden=kind!=='support';
   $('owned-count').textContent='육성마 '+data.collection.filter(c=>c.kind==='character').length+' · 카드 '+data.collection.filter(c=>c.kind==='support').length;
   const items=(kind==='character'?data.characters:kind==='support'?data.supports:data.skills).filter(c=>(c.name+' '+(c.title||'')+' '+c.id).toLowerCase().includes(query)&&(kind!=='support'||!type||c.type===type));
-  $('collection-list').innerHTML=items.map(c=>{const own=data.collection.find(x=>x.kind===kind&&x.id===c.id);return `<div class="collection-item">${kind==='skill'?'':`<input type="checkbox" data-own="${c.id}" aria-label="${esc(c.name)} 보유" ${own?'checked':''}>`}${img(c.image||c.icon)}<div class="copy"><b>${esc(c.name)}</b><small>${esc(c.title||c.description||'')}</small><small>${c.id} · ${kind==='support'?esc(c.rarity+' / '+(types[c.type]||c.type)):kind==='skill'?(c.supported?'엔진 지원':'엔진 미지원'):'KR 출시 미확인'}</small></div>${kind==='support'?`<label><small>레벨</small><input aria-label="${esc(c.name)} 레벨" type="number" min="1" max="${c.maxLevel}" value="${own?.level||c.maxLevel}" data-level="${c.id}"></label>`:''}</div>`;}).join('')||'<p class="caption">검색 결과가 없습니다.</p>';
+  $('collection-list').innerHTML = items.map(item => {
+    const detail = kind === 'support'
+      ? [item.rarity, types[item.type] || item.type, '최대 Lv. ' + item.maxLevel].join(' · ')
+      : kind === 'skill' ? (item.supported ? '엔진 지원' : '엔진 미지원') : item.title || '';
+    return '<div class="collection-item"><div class="copy"><b>' + esc(item.name) +
+      '</b><small>' + esc(detail) + '</small><small>' + esc(item.id) + '</small></div></div>';
+  }).join('') || '<p class="caption">검색 결과가 없습니다.</p>';
 }
 async function saveCollection(id,owned,level){
   const kind=$('collection-kind').value;await api('/api/collection',{kind,id,owned,level});
   data.collection=data.collection.filter(x=>x.kind!==kind||x.id!==id);if(owned)data.collection.push({kind,id,level:level||1});collectionDirty=true;collection();
 }
-const titles={veterans:['인자와 우승 기록을 모아요.','육성 개체별 인자·G1·부모 연결을 이 PC의 DB에 저장합니다.'],planner:['다음 레이스를 준비해요.','한국 공략과 일본 대회 자료로 조합부터 계승과 편성까지 한눈에.'],collection:['나만의 라인업.','보유 육성마와 서포트 카드를 등록하고, 전체 데이터를 찾아보세요.'],saved:['육성 계획을 모아두세요.','준비한 조합과 계산 결과를 다음 육성에서도.'],sources:['숫자의 출처를 확인해요.','가져온 데이터, 라이선스와 계산의 범위를 투명하게.']};
+const titles={veterans:['인자와 우승 기록을 모아요.','육성 개체별 인자·G1·부모 연결을 이 PC의 DB에 저장합니다.'],planner:['다음 레이스를 준비해요.','한국 공략과 일본 대회 자료로 조합부터 계승과 편성까지 한눈에.'],collection:['육성마 · 카드 · 스킬','공개 스냅샷에서 데이터를 검색하세요.'],saved:['육성 계획을 모아두세요.','준비한 조합과 계산 결과를 다음 육성에서도.'],sources:['숫자의 출처를 확인해요.','가져온 데이터, 라이선스와 계산의 범위를 투명하게.']};
 async function page(name){
   document.querySelectorAll('.page').forEach(p=>p.hidden=p.id!==name);document.querySelectorAll('.nav').forEach(b=>b.classList.toggle('active',b.dataset.page===name));$('page-title').textContent=titles[name][0];$('page-subtitle').textContent=titles[name][1];
   if(name==='collection')collection();
@@ -144,7 +170,7 @@ function applyConfig(c){
   $('ownedOnly').checked=!!c.ownedOnly;mode=c.mode==='score'?'score':'factor';teamId=c.teamId||'';targetId=c.teamId?c.targetId||'':'';
 }
 async function init(){
-  data=await api('/api/data');$('db-state').textContent=`JP 계산 · ${data.counts.simulatedSkills.toLocaleString()} 스킬`;
+  data=await api('/api/data');$('db-state').textContent='공개 데이터 · 읽기 전용';
   $('courseId').innerHTML=data.nextEvents.events.map(e=>`<option value="${e.courseId}">${esc(e.name)} · ${esc(e.startDate)} · ${esc(e.courseLabel)}</option>`).join('')||'<option value="">예정 코스 미등록</option>';
   $('courseId').disabled=!data.nextEvents.events.length;
   applyConfig(data.preferences.config||{});
@@ -155,7 +181,18 @@ async function init(){
   $('data-notes').innerHTML=data.notes.map(n=>`<li>${esc(n)}</li>`).join('');$('import-date').textContent='DB 가져온 시각: '+new Date(data.importedAt).toLocaleString('ko-KR')+' · 코스 '+data.counts.courses+'개 · 계산 지원 '+data.counts.simulatedSkills+'개';
   document.querySelectorAll('[data-page]').forEach(b=>b.onclick=()=>page(b.dataset.page).catch(e=>toast(e.message)));
   $('config').onsubmit=e=>e.preventDefault();$('config').onchange=e=>{if(e.target.id==='courseId'){targetId='';teamId='';for(const k of ['parent1Id','parent2Id'])$(k).value='';applyEventDefaults();}refresh();};
-  $('teams').onclick=e=>{for(const k of ['parent1Id','parent2Id'])$(k).value='';const b=e.target.closest('button');if(!b||b.disabled)return;if(b.dataset.member){targetId=b.dataset.member;teamId=b.dataset.team;$('style').value=b.dataset.style;}else if(b.dataset.selectTeam){teamId=b.dataset.selectTeam;targetId='';}else return;refresh();};
+  $('teams').onclick = e => {
+    const button = e.target.closest('button');
+    if (!button || button.disabled) return;
+    if (button.dataset.member) {
+      teamId = button.dataset.team;
+      targetId = button.dataset.member;
+    } else if (button.dataset.selectTeam) {
+      teamId = button.dataset.selectTeam;
+      targetId = plan.teamRecommendations.teams.find(team => team.id === teamId)?.members[0]?.id || '';
+    } else return;
+    return refresh();
+  };
   $('style').onchange=()=>refresh();
   $('targetId').onchange=()=>{targetId=$('targetId').value;for(const key of ['parent1Id','parent2Id'])$(key).value='';refresh();};
   for(const key of ['parent1Id','parent2Id'])$(key).onchange=()=>refresh();
@@ -177,4 +214,4 @@ async function init(){
   await loadVeterans();renderParentOptions();
   await refresh();
 }
-init().catch(e=>{$('db-state').textContent='DB 연결 실패';toast(e.message);});
+init().catch(e=>{$('db-state').textContent='데이터 불러오기 실패';toast(e.message);});
