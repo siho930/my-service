@@ -12,3 +12,31 @@
 .support-role{display:block;background:var(--light);color:var(--green);font-size:10px;padding:5px;border-radius:5px;margin:8px 0}.support-reason,.support-choice{display:block;margin-top:6px;line-height:1.7}.support-choice{color:var(--green)!important}.support-guidance{margin-top:18px;padding:13px;background:#f5f8f4;border-radius:8px;font-size:11px;line-height:1.8}.support-guidance p{margin:5px 0}.support-guidance details{font-size:11px}.support-warnings{padding-left:18px;color:#9b5e35}.deck-card details{font-size:10px;text-align:left}.deck-card details p{margin:6px 0}
 
 .skill-route{display:inline-block;font-size:9px;border-radius:4px;padding:2px 6px;margin:4px 0}.skill-route.in-build{background:#e7f2e8;color:#24684f;font-weight:700}.skill-route.extra-route{background:#f0f1f3;color:#727b78}.skill-name .in-build{border:1px solid #c0dac6}
+
+.item-icon {
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-content: center;
+  gap: 2px;
+  width: 42px;
+  height: 46px;
+  border-radius: 8px;
+  background: #e4f1e8;
+  color: #245b46;
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1.1;
+  text-align: center;
+}
+.item-icon > small {
+  margin: 0;
+  color: inherit;
+  font-size: 8px;
+  font-weight: 600;
+}
+.item-icon--support { background: #f7ead3; color: #745218; }
+.item-icon--skill { background: #e9e9fc; color: #4d477d; }
+.team-member .item-icon { display: grid; width: 57px; height: 54px; margin: 0 auto 7px; }
+.deck-card .item-icon { float: left; margin: 0 9px 6px 0; }
+.grand .item-icon, .skill-name .item-icon { width: 32px; height: 32px; font-size: 10px; }
+.grand .item-icon > small, .skill-name .item-icon > small { display: none; }
