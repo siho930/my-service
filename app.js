@@ -3,11 +3,21 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 const types={speed:'스피드',stamina:'스태미나',power:'파워',guts:'근성',wisdom:'지능',friend:'친구'};
 const rarity={unique:'고유',unique_upgraded:'고유',inherited_unique:'계승',evolution:'진화',gold:'레어',rare:'레어',normal:'일반',white:'일반'};
 const itemIconKinds = {character:'육성마',support:'서포트',skill:'스킬'};
+const iconFolders = {character:'characters',support:'cards',skill:'skills'};
+const imageOrigin = 'https://raw.githubusercontent.com/shiyuzi-ship-it/umamusumedb/main/public';
+let iconPaths = {};
 function itemIcon(kind, item) {
   const mark = Array.from(String(item.name ?? '').trim().replace(/\s/g, '')).slice(0, 2).join('');
   const label = kind === 'support' ? types[item.type] || itemIconKinds[kind] : itemIconKinds[kind];
-  return `<span class="item-icon item-icon--${kind}" aria-hidden="true"><span>${esc(mark || label)}</span><small>${esc(label)}</small></span>`;
+  const imageId = iconPaths[kind]?.[item.id];
+  const picture = /^\d+$/.test(imageId ?? '')
+    ? `<img class="item-icon-picture" src="${imageOrigin}/img/${iconFolders[kind]}/${imageId}.webp" alt="" loading="lazy" decoding="async">`
+    : '';
+  return `<span class="item-icon item-icon--${kind}" aria-hidden="true"><span>${esc(mark || label)}</span><small>${esc(label)}</small>${picture}</span>`;
 }
+document.addEventListener('error', event => {
+  if (event.target.matches?.('.item-icon-picture')) event.target.remove();
+}, true);
 let data,plan,mode='factor',targetId='',teamId='',worker=null,requestNumber=0,toastTimer,collectionDirty=false;
 let veteranData={records:[],factorTypes:{},g1Races:[]},editingVeteran=null;
 function factorRow(f={type:'blue',name:'',stars:3}){
@@ -175,6 +185,12 @@ function applyConfig(c){
   $('ownedOnly').checked=!!c.ownedOnly;mode=c.mode==='score'?'score':'factor';teamId=c.teamId||'';targetId=c.teamId?c.targetId||'':'';
 }
 async function init(){
+  try {
+    const icons = await fetch('./icon-paths.json');
+    if (icons.ok) iconPaths = await icons.json();
+  } catch {
+    // The letter icons remain available if the icon index cannot be loaded.
+  }
   data=await api('/api/data');$('db-state').textContent='공개 데이터 · 읽기 전용';
   $('courseId').innerHTML=data.nextEvents.events.map(e=>`<option value="${e.courseId}">${esc(e.name)} · ${esc(e.startDate)} · ${esc(e.courseLabel)}</option>`).join('')||'<option value="">예정 코스 미등록</option>';
   $('courseId').disabled=!data.nextEvents.events.length;
